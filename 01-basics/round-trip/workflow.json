@@ -1,0 +1,101 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ER7 message. Decode it, encode the XML again, and answer with an application ACK."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "description": "generateAck is off: the application ACK is created at the end, once the message has been processed. With allowSchemaless, a message that has no schema is decoded with generic names.",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "generateAck": false,
+            "allowSchemaless": true
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "Encode_HL7": {
+        "type": "ServiceProvider",
+        "description": "This is where the XML would normally be changed (Transform XML, Compose, ...) before it is encoded again. validateXml (default true) needs a schema, so it is on only when Decode found one; without it, positions come from the element names.",
+        "inputs": {
+          "parameters": {
+            "message": "@{body('Decode_HL7')?['xml']}",
+            "validateXml": "@not(empty(first(body('Decode_HL7')?['messages'])?['schema']))"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "encode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Create_application_ACK": {
+        "type": "ServiceProvider",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "ackCode": "@{if(and(body('Decode_HL7')?['success'], body('Encode_HL7')?['success']), 'AA', 'AE')}",
+            "errorMessage": "@{if(and(body('Decode_HL7')?['success'], body('Encode_HL7')?['success']), '', 'The message could not be processed')}"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "createAck",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {
+          "Encode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "decodeSuccess": "@body('Decode_HL7')?['success']",
+            "schema": "@first(body('Decode_HL7')?['messages'])?['schema']",
+            "encodeSuccess": "@body('Encode_HL7')?['success']",
+            "encodedMessage": "@body('Encode_HL7')?['hl7Message']",
+            "roundTripIdentical": "@equals(replace(replace(string(triggerBody()), decodeUriComponent('%0A'), ''), decodeUriComponent('%0D'), ''), replace(string(body('Encode_HL7')?['hl7Message']), decodeUriComponent('%0D'), ''))",
+            "applicationAck": "@body('Create_application_ACK')?['ack']",
+            "errors": "@union(coalesce(body('Decode_HL7')?['errors'], json('[]')), coalesce(body('Encode_HL7')?['errors'], json('[]')))"
+          }
+        },
+        "runAfter": {
+          "Create_application_ACK": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

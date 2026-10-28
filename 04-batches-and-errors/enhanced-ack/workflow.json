@@ -1,0 +1,152 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ER7 message with MSH-15 and MSH-16. Returns the commit ACK (CA, CE or CR) and, when MSH-16 asks for one, the application ACK."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "description": "ackMode Auto (the default): MSH-15 or MSH-16 present means enhanced mode, so the ACK is a commit ACK: CA, CE or CR.",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "ackMode": "Auto",
+            "allowSchemaless": true
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "MSH_16": {
+        "type": "Compose",
+        "description": "Application acknowledgment type: AL always, NE never, ER only on error, SU only on success. Empty in original mode.",
+        "inputs": "@xpath(xml(coalesce(body('Decode_HL7')?['xml'], '<none/>')), 'string(/*/MSH/*[local-name() = ''MSH_16'' or starts-with(local-name(), ''MSH_16_'')])')",
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Process_the_message": {
+        "type": "Compose",
+        "description": "Your processing goes here. Its result decides the application ACK: this sample accepts what was decoded.",
+        "inputs": "@if(body('Decode_HL7')?['success'], 'AA', 'AE')",
+        "runAfter": {
+          "MSH_16": [
+            "Succeeded"
+          ]
+        }
+      },
+      "If_an_application_ACK_is_wanted": {
+        "type": "If",
+        "expression": {
+          "or": [
+            {
+              "equals": [
+                "@outputs('MSH_16')",
+                "AL"
+              ]
+            },
+            {
+              "and": [
+                {
+                  "equals": [
+                    "@outputs('MSH_16')",
+                    "ER"
+                  ]
+                },
+                {
+                  "not": {
+                    "equals": [
+                      "@outputs('Process_the_message')",
+                      "AA"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "and": [
+                {
+                  "equals": [
+                    "@outputs('MSH_16')",
+                    "SU"
+                  ]
+                },
+                {
+                  "equals": [
+                    "@outputs('Process_the_message')",
+                    "AA"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "Create_application_ACK": {
+            "type": "ServiceProvider",
+            "description": "In a real interface this ACK is sent to the sender later, on a new connection (for MLLP, see the HL7 MLLP Connector).",
+            "inputs": {
+              "parameters": {
+                "message": "@{triggerBody()}",
+                "ackCode": "@{outputs('Process_the_message')}",
+                "errorMessage": "@{if(equals(outputs('Process_the_message'), 'AA'), '', 'The message was not valid')}"
+              },
+              "serviceProviderConfiguration": {
+                "connectionName": "lamboHl7Codec",
+                "operationId": "createAck",
+                "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+              }
+            }
+          }
+        },
+        "else": {
+          "actions": {}
+        },
+        "runAfter": {
+          "Process_the_message": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "acceptAckType": "@xpath(xml(coalesce(body('Decode_HL7')?['xml'], '<none/>')), 'string(/*/MSH/*[local-name() = ''MSH_15'' or starts-with(local-name(), ''MSH_15_'')])')",
+            "applicationAckType": "@outputs('MSH_16')",
+            "commitAck": "@body('Decode_HL7')?['ack']",
+            "commitAckCode": "@body('Decode_HL7')?['ackCode']",
+            "applicationAck": "@actions('Create_application_ACK')?['outputs']?['body']?['ack']"
+          }
+        },
+        "runAfter": {
+          "If_an_application_ACK_is_wanted": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

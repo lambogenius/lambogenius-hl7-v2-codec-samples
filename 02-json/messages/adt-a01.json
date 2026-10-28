@@ -1,0 +1,128 @@
+{
+  "ADT_A01_25": {
+    "MSH": {
+      "MSH_1_FieldSeparator": "|",
+      "MSH_2_EncodingCharacters": "^~\\&",
+      "MSH_3_SendingApplication": {
+        "HD_0_NamespaceID": "NWD-ADT"
+      },
+      "MSH_4_SendingFacility": {
+        "HD_0_NamespaceID": "NORTHWIND GENERAL"
+      },
+      "MSH_5_ReceivingApplication": {
+        "HD_0_NamespaceID": "LAMBO-EMR"
+      },
+      "MSH_6_ReceivingFacility": {
+        "HD_0_NamespaceID": "LAMBO CLINIC"
+      },
+      "MSH_7_DateTimeOfMessage": {
+        "TS_0_Time": "20261028093000"
+      },
+      "MSH_9_MessageType": {
+        "MSG_0_MessageCode": "ADT",
+        "MSG_1_TriggerEvent": "A01",
+        "MSG_2_MessageStructure": "ADT_A01"
+      },
+      "MSH_10_MessageControlID": "NWD000201",
+      "MSH_11_ProcessingID": {
+        "PT_0_ProcessingID": "P"
+      },
+      "MSH_12_VersionID": {
+        "VID_0_VersionID": "2.5"
+      }
+    },
+    "EVN": {
+      "EVN_1_EventTypeCode": "A01",
+      "EVN_2_RecordedDateTime": {
+        "TS_0_Time": "20261028092500"
+      }
+    },
+    "PID": {
+      "PID_1_SetIDPID": "1",
+      "PID_3_PatientIdentifierList": [
+        {
+          "CX_0_IDNumber": "900111",
+          "CX_3_AssigningAuthority": {
+            "HD_0_NamespaceID": "NWD"
+          },
+          "CX_4_IdentifierTypeCode": "MR"
+        }
+      ],
+      "PID_5_PatientName": [
+        {
+          "XPN_0_FamilyName": {
+            "FN_0_Surname": "SAMPLE"
+          },
+          "XPN_1_GivenName": "JORDAN",
+          "XPN_2_SecondAndFurtherGivenNamesOrInitialsThereof": "K"
+        }
+      ],
+      "PID_7_DateTimeOfBirth": {
+        "TS_0_Time": "19850214"
+      },
+      "PID_8_AdministrativeSex": "F",
+      "PID_11_PatientAddress": [
+        {
+          "XAD_0_StreetAddress": {
+            "SAD_0_StreetOrMailingAddress": "100 EXAMPLE ROAD"
+          },
+          "XAD_2_City": "SPRINGFIELD",
+          "XAD_3_StateOrProvince": "ON",
+          "XAD_4_ZipOrPostalCode": "A1A 1A1",
+          "XAD_5_Country": "CA"
+        }
+      ],
+      "PID_13_PhoneNumberHome": [
+        {
+          "XTN_0_TelephoneNumber": "555-0100"
+        }
+      ]
+    },
+    "PV1": {
+      "PV1_1_SetIDPV1": "1",
+      "PV1_2_PatientClass": "I",
+      "PV1_3_AssignedPatientLocation": {
+        "PL_0_PointOfCare": "WARD3",
+        "PL_1_Room": "301",
+        "PL_2_Bed": "A",
+        "PL_3_Facility": {
+          "HD_0_NamespaceID": "NWD"
+        }
+      },
+      "PV1_7_AttendingDoctor": [
+        {
+          "XCN_0_IDNumber": "1234",
+          "XCN_1_FamilyName": {
+            "FN_0_Surname": "EXAMPLE"
+          },
+          "XCN_2_GivenName": "CHRIS",
+          "XCN_5_PrefixEGDR": "DR"
+        }
+      ],
+      "PV1_10_HospitalService": "MED",
+      "PV1_19_VisitNumber": {
+        "CX_0_IDNumber": "V000501"
+      }
+    },
+    "OBX": [
+      {
+        "OBX_1_SetIDOBX": "1",
+        "OBX_2_ValueType": "NM",
+        "OBX_3_ObservationIdentifier": {
+          "CE_0_Identifier": "HT",
+          "CE_1_Text": "Body height",
+          "CE_2_NameOfCodingSystem": "L"
+        },
+        "OBX_5_ObservationValue": [
+          "170"
+        ],
+        "OBX_6_Units": {
+          "CE_0_Identifier": "cm",
+          "CE_1_Text": "centimeter",
+          "CE_2_NameOfCodingSystem": "UCUM"
+        },
+        "OBX_11_ObservationResultStatus": "F"
+      }
+    ]
+  }
+}

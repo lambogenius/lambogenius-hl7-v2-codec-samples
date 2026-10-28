@@ -1,0 +1,115 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ER7 message or an FHS/BHS batch. Returns the ACK (or the batch ACK) as text. Add &schemaless=true to accept messages that have no schema."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "description": "HL7 problems never fail this action: they become AE or AR in the ACK, with ERR segments. supportedVersions: any other MSH-12 gets AR.",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "supportedVersions": "2.5",
+            "allowSchemaless": "@equals(coalesce(triggerOutputs()?['queries']?['schemaless'], 'false'), 'true')"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "For_each_message": {
+        "type": "Foreach",
+        "description": "One entry per message, also for a batch. Route the accepted ones to your systems here; this sample only keeps a log line.",
+        "foreach": "@body('Decode_HL7')?['messages']",
+        "actions": {
+          "If_accepted": {
+            "type": "If",
+            "expression": {
+              "and": [
+                {
+                  "equals": [
+                    "@items('For_each_message')?['success']",
+                    true
+                  ]
+                }
+              ]
+            },
+            "actions": {
+              "Accepted": {
+                "type": "Compose",
+                "description": "Replace with your processing: Transform XML, Service Bus, a database, ... The XML is in items('For_each_message')?['xml'].",
+                "inputs": "@concat(items('For_each_message')?['controlId'], ' ', items('For_each_message')?['messageType'], '^', items('For_each_message')?['triggerEvent'], ' accepted')"
+              }
+            },
+            "else": {
+              "actions": {
+                "Rejected": {
+                  "type": "Compose",
+                  "description": "The ACK already says why (AE or AR, with ERR segments). Log or alert here.",
+                  "inputs": "@items('For_each_message')?['errors']"
+                }
+              }
+            },
+            "runAfter": {}
+          }
+        },
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Return_the_ACK": {
+        "type": "Response",
+        "kind": "Http",
+        "description": "Always 200: the ACK is the answer, whatever its code. For a batch, batchAck wraps one ACK per message in FHS/BHS ... BTS/FTS.",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "text/plain",
+            "x-message-count": "@{body('Decode_HL7')?['messageCount']}",
+            "x-ack-codes": "@{join(body('ACK_codes'), ',')}"
+          },
+          "body": "@{coalesce(body('Decode_HL7')?['batchAck'], body('Decode_HL7')?['ack'], '')}"
+        },
+        "runAfter": {
+          "For_each_message": [
+            "Succeeded",
+            "Failed"
+          ],
+          "ACK_codes": [
+            "Succeeded"
+          ]
+        }
+      },
+      "ACK_codes": {
+        "type": "Select",
+        "description": "Each message's own ACK code (the batch's ackCode output is the first message's).",
+        "inputs": {
+          "from": "@body('Decode_HL7')?['messages']",
+          "select": "@item()?['ackCode']"
+        },
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

@@ -1,0 +1,18 @@
+# The connector package is downloaded from lambogenius.com; it is not part of this repository.
+packages/*.nupkg
+
+# Schemas are generated on your machine from HL7's v2.xml schemas (run.ps1 -V2XmlFolder). They hold HL7's content,
+# so they must not be committed or shared. Keep your v2.xml download outside the repository, or in v2xml/.
+**/Artifacts/Schemas/
+v2xml/
+
+bin/
+obj/
+local.settings.json
+logs/
+.azurite/
+__azurite_db*
+__blobstorage__/
+__queuestorage__/
+workflow-designtime/
+.vs/

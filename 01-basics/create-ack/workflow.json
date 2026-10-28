@@ -1,0 +1,71 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "ackCode": {
+                "type": "string"
+              },
+              "errorMessage": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message"
+            ]
+          }
+        },
+        "description": "POST JSON: { \"message\": \"MSH|...\", \"ackCode\": \"AE\", \"errorMessage\": \"...\" }"
+      }
+    },
+    "actions": {
+      "Create_ACK": {
+        "type": "ServiceProvider",
+        "description": "An ACK for a message that was processed further on. No schema is needed.",
+        "inputs": {
+          "parameters": {
+            "message": "@triggerBody()?['message']",
+            "ackCode": "@{coalesce(triggerBody()?['ackCode'], 'AA')}",
+            "errorMessage": "@{coalesce(triggerBody()?['errorMessage'], '')}"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "createAck",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "description": "200 with the ACK, or 400 with the errors.",
+        "inputs": {
+          "statusCode": "@if(body('Create_ACK')?['success'], 200, 400)",
+          "headers": {
+            "Content-Type": "@{if(body('Create_ACK')?['success'], 'text/plain', 'application/json')}"
+          },
+          "body": "@if(body('Create_ACK')?['success'], body('Create_ACK')?['ack'], body('Create_ACK')?['errors'])"
+        },
+        "runAfter": {
+          "Create_ACK": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

@@ -1,0 +1,53 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ER7 message or batch. Returns the whole Decode output as JSON: messages[], errors[] with code, severity and location, and the XML. Add &schemaless=true as in receive."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "supportedVersions": "2.5",
+            "allowSchemaless": "@equals(coalesce(triggerOutputs()?['queries']?['schemaless'], 'false'), 'true')",
+            "indent": true
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "@body('Decode_HL7')"
+        },
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

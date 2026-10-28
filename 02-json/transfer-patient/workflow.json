@@ -1,0 +1,209 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ADT^A01 (ER7) with ?ward=...&room=...&bed=... in the URL. Returns an ADT^A08 with the patient's new bed, encoded from the changed JSON."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "description": "No allowSchemaless here: the expressions below use the names of the schema generated from v2.xml (ADT_A01_25, PV1_3_AssignedPatientLocation).",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "outputFormat": "json",
+            "generateAck": false
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "If_decoded": {
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "equals": [
+                "@body('Decode_HL7')?['success']",
+                true
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "Message": {
+            "type": "Compose",
+            "description": "The message root. Fields that repeat in the schema are always arrays (PID_3, PID_5); the others are objects or strings.",
+            "inputs": "@json(body('Decode_HL7')?['json'])?['ADT_A01_25']",
+            "runAfter": {}
+          },
+          "New_location": {
+            "type": "Compose",
+            "description": "PV1-3: the new point of care, room and bed from the URL. The facility (PL.4) is kept.",
+            "inputs": {
+              "PL_0_PointOfCare": "@{triggerOutputs()?['queries']?['ward']}",
+              "PL_1_Room": "@{triggerOutputs()?['queries']?['room']}",
+              "PL_2_Bed": "@{triggerOutputs()?['queries']?['bed']}",
+              "PL_3_Facility": "@outputs('Message')?['PV1']?['PV1_3_AssignedPatientLocation']?['PL_3_Facility']"
+            },
+            "runAfter": {
+              "Message": [
+                "Succeeded"
+              ]
+            }
+          },
+          "Trigger_event": {
+            "type": "Compose",
+            "description": "MSH-9.2 becomes A08 (update patient information).",
+            "inputs": {
+              "MSG_1_TriggerEvent": "A08"
+            },
+            "runAfter": {}
+          },
+          "MSH_changes": {
+            "type": "Compose",
+            "description": "The MSH fields that change: the trigger event, and a new control id.",
+            "inputs": {
+              "MSH_9_MessageType": "@union(outputs('Message')?['MSH']?['MSH_9_MessageType'], outputs('Trigger_event'))",
+              "MSH_10_MessageControlID": "@{concat(outputs('Message')?['MSH']?['MSH_10_MessageControlID'], '-T')}"
+            },
+            "runAfter": {
+              "Message": [
+                "Succeeded"
+              ],
+              "Trigger_event": [
+                "Succeeded"
+              ]
+            }
+          },
+          "EVN_changes": {
+            "type": "Compose",
+            "description": "EVN-1, the event type, becomes A08 too.",
+            "inputs": {
+              "EVN_1_EventTypeCode": "A08"
+            },
+            "runAfter": {}
+          },
+          "PV1_changes": {
+            "type": "Compose",
+            "description": "PV1-3, the patient's location.",
+            "inputs": {
+              "PV1_3_AssignedPatientLocation": "@outputs('New_location')"
+            },
+            "runAfter": {
+              "New_location": [
+                "Succeeded"
+              ]
+            }
+          },
+          "Changed_segments": {
+            "type": "Compose",
+            "description": "Each segment merged with its changes. union() keeps every field in its place and replaces its value; setProperty() would move a changed field to the end, and the encoder and the schema read fields and segments in order.",
+            "inputs": {
+              "MSH": "@union(outputs('Message')?['MSH'], outputs('MSH_changes'))",
+              "EVN": "@union(outputs('Message')?['EVN'], outputs('EVN_changes'))",
+              "PV1": "@union(outputs('Message')?['PV1'], outputs('PV1_changes'))"
+            },
+            "runAfter": {
+              "MSH_changes": [
+                "Succeeded"
+              ],
+              "EVN_changes": [
+                "Succeeded"
+              ],
+              "PV1_changes": [
+                "Succeeded"
+              ]
+            }
+          },
+          "Changed_message": {
+            "type": "Compose",
+            "description": "The message with the changed segments in their places, wrapped in its root again.",
+            "inputs": {
+              "ADT_A01_25": "@union(outputs('Message'), outputs('Changed_segments'))"
+            },
+            "runAfter": {
+              "Changed_segments": [
+                "Succeeded"
+              ]
+            }
+          },
+          "Encode_HL7": {
+            "type": "ServiceProvider",
+            "description": "The changed JSON back to ER7, validated against the schema.",
+            "inputs": {
+              "parameters": {
+                "message": "@{outputs('Changed_message')}",
+                "validateXml": true
+              },
+              "serviceProviderConfiguration": {
+                "connectionName": "lamboHl7Codec",
+                "operationId": "encode",
+                "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+              }
+            },
+            "runAfter": {
+              "Changed_message": [
+                "Succeeded"
+              ]
+            }
+          },
+          "Return_the_A08": {
+            "type": "Response",
+            "kind": "Http",
+            "inputs": {
+              "statusCode": "@if(body('Encode_HL7')?['success'], 200, 400)",
+              "headers": {
+                "Content-Type": "@{if(body('Encode_HL7')?['success'], 'text/plain', 'application/json')}"
+              },
+              "body": "@if(body('Encode_HL7')?['success'], body('Encode_HL7')?['hl7Message'], body('Encode_HL7')?['errors'])"
+            },
+            "runAfter": {
+              "Encode_HL7": [
+                "Succeeded"
+              ]
+            }
+          }
+        },
+        "else": {
+          "actions": {
+            "Return_the_errors": {
+              "type": "Response",
+              "kind": "Http",
+              "description": "Not decoded: no schema (AR) or not valid (AE). The errors say why.",
+              "inputs": {
+                "statusCode": 422,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "ackCode": "@body('Decode_HL7')?['ackCode']",
+                  "errors": "@body('Decode_HL7')?['errors']"
+                }
+              }
+            }
+          }
+        },
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

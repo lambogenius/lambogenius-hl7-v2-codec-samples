@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.nupkg binary
+# HL7 messages: kept byte for byte (segments end with LF here; the codec accepts CR, LF and CRLF).
+*.hl7 -text

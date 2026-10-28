@@ -1,0 +1,54 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an HL7 message in its JSON form (Content-Type: application/json). Returns the ER7 message. Add &validate=true to validate it against the schema first."
+      }
+    },
+    "actions": {
+      "Encode_HL7": {
+        "type": "ServiceProvider",
+        "description": "Encode reads JSON as well as XML. inputFormat json says which; the default, auto, also takes input that starts with { as JSON. @{...} turns the parsed request body back into JSON text.",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "inputFormat": "json",
+            "validateXml": "@equals(coalesce(triggerOutputs()?['queries']?['validate'], 'false'), 'true')"
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "encode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "description": "200 with the ER7 message, or 400 with the errors.",
+        "inputs": {
+          "statusCode": "@if(body('Encode_HL7')?['success'], 200, 400)",
+          "headers": {
+            "Content-Type": "@{if(body('Encode_HL7')?['success'], 'text/plain', 'application/json')}"
+          },
+          "body": "@if(body('Encode_HL7')?['success'], body('Encode_HL7')?['hl7Message'], body('Encode_HL7')?['errors'])"
+        },
+        "runAfter": {
+          "Encode_HL7": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

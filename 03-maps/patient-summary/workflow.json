@@ -1,0 +1,107 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ADT^A01 (ER7). Returns a patient summary made by an XSLT map, with two fields read by xpath() in headers."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "description": "With allowSchemaless, a message that has no schema is decoded with generic names instead of being refused.",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "generateAck": false,
+            "allowSchemaless": true
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "Choose_the_map": {
+        "type": "Compose",
+        "description": "The map for the schema's names, or the one for generic names when no schema was found.",
+        "inputs": "@if(empty(first(body('Decode_HL7')?['messages'])?['schema']), 'patient-summary-generic.xslt', 'patient-summary.xslt')",
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Transform_XML": {
+        "type": "Xslt",
+        "description": "The built-in Transform XML action, with a map from Artifacts/Maps.",
+        "inputs": {
+          "content": "@{body('Decode_HL7')?['xml']}",
+          "map": {
+            "source": "LogicApp",
+            "name": "@{outputs('Choose_the_map')}"
+          }
+        },
+        "runAfter": {
+          "Choose_the_map": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Patient_class": {
+        "type": "Compose",
+        "description": "xpath() on the decoded XML. Matching PV1_2 by its number works with or without the schema's descriptive names (PV1_2_PatientClass).",
+        "inputs": "@xpath(xml(body('Decode_HL7')?['xml']), 'string(/*/PV1/*[local-name() = ''PV1_2'' or starts-with(local-name(), ''PV1_2_'')])')",
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Observation_count": {
+        "type": "Compose",
+        "inputs": "@xpath(xml(body('Decode_HL7')?['xml']), 'count(/*/OBX)')",
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/xml",
+            "x-map": "@{outputs('Choose_the_map')}",
+            "x-patient-class": "@{outputs('Patient_class')}",
+            "x-observation-count": "@{outputs('Observation_count')}"
+          },
+          "body": "@body('Transform_XML')"
+        },
+        "runAfter": {
+          "Transform_XML": [
+            "Succeeded"
+          ],
+          "Patient_class": [
+            "Succeeded"
+          ],
+          "Observation_count": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}

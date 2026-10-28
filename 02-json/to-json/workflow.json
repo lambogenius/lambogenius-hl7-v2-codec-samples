@@ -1,0 +1,60 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "When_an_HTTP_request_is_received": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "POST"
+        },
+        "description": "POST an ER7 message. Returns it as JSON, with the schema that was used."
+      }
+    },
+    "actions": {
+      "Decode_HL7": {
+        "type": "ServiceProvider",
+        "description": "outputFormat json: the same document as the XML, as JSON in body('Decode_HL7')?['json'] (a string).",
+        "inputs": {
+          "parameters": {
+            "message": "@{triggerBody()}",
+            "outputFormat": "json",
+            "generateAck": false,
+            "allowSchemaless": true
+          },
+          "serviceProviderConfiguration": {
+            "connectionName": "lamboHl7Codec",
+            "operationId": "decode",
+            "serviceProviderId": "/serviceProviders/lamboHl7Codec"
+          }
+        },
+        "runAfter": {}
+      },
+      "Response": {
+        "type": "Response",
+        "kind": "Http",
+        "inputs": {
+          "statusCode": "@if(body('Decode_HL7')?['success'], 200, 422)",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "schema": "@first(body('Decode_HL7')?['messages'])?['schema']",
+            "outputFormat": "@body('Decode_HL7')?['outputFormat']",
+            "xmlIsEmpty": "@empty(body('Decode_HL7')?['xml'])",
+            "message": "@json(coalesce(body('Decode_HL7')?['json'], 'null'))",
+            "errors": "@body('Decode_HL7')?['errors']"
+          }
+        },
+        "runAfter": {
+          "Decode_HL7": [
+            "Succeeded"
+          ]
+        }
+      }
+    },
+    "outputs": {}
+  },
+  "kind": "Stateful"
+}
